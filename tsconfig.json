@@ -1,9 +1,10 @@
 {
   "compilerOptions": {
     "target": "es2023",
+    "jsx": "react-jsx",
     "module": "esnext",
     "lib": ["ES2023", "DOM"],
-    "types": ["vite/client"],
+    "types": ["vite/client", "react", "react-dom", "node"],
     "allowArbitraryExtensions": true,
     "skipLibCheck": true,
 
@@ -20,5 +21,5 @@
     "erasableSyntaxOnly": true,
     "noFallthroughCasesInSwitch": true
   },
-  "include": ["src"]
+  "include": ["src", "api", "vite.config.ts"]
 }
