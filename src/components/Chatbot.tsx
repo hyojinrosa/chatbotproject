@@ -21,23 +21,45 @@ export default function Chatbot() {
   const textarea = useRef<HTMLTextAreaElement>(null)
 
   useEffect(() => {
-    messagesEnd.current?.scrollIntoView({ behavior: 'smooth' })
-  }, [messages])
+    messagesEnd.current?.scrollIntoView({ behavior: isLoading ? 'auto' : 'smooth' })
+  }, [messages, isLoading])
 
   async function submit(text = input) {
     const content = text.trim()
     if (!content || isLoading) return
-    const history: ChatMessage[] = [...messages.filter((message) => !message.pending), { role: 'user', content }]
-    setMessages((current) => [...current, { id: nextId.current++, role: 'user', content }, { id: nextId.current++, role: 'assistant', content: '', pending: true }])
+    const history: ChatMessage[] = [
+      ...messages.filter((message) => !message.pending).map(({ role, content: messageContent }) => ({ role, content: messageContent })),
+      { role: 'user', content },
+    ]
+    const userId = nextId.current++
+    const assistantId = nextId.current++
+    setMessages((current) => [
+      ...current,
+      { id: userId, role: 'user', content },
+      { id: assistantId, role: 'assistant', content: '', pending: true },
+    ])
     setInput('')
     setIsLoading(true)
     if (textarea.current) textarea.current.style.height = 'auto'
     try {
-      const reply = await sendChat(history)
-      setMessages((current) => current.map((message) => message.pending ? { ...message, content: reply, pending: false } : message))
+      await sendChat(history, (delta) => {
+        setMessages((current) =>
+          current.map((message) =>
+            message.id === assistantId
+              ? { ...message, content: message.content + delta, pending: false }
+              : message,
+          ),
+        )
+      })
     } catch (error) {
       const message = error instanceof Error ? error.message : '오류가 발생했어요. 다시 시도해 주세요.'
-      setMessages((current) => current.map((item) => item.pending ? { ...item, content: message, pending: false } : item))
+      setMessages((current) =>
+        current.map((item) =>
+          item.id === assistantId
+            ? { ...item, content: item.content ? `${item.content}\n\n${message}` : message, pending: false }
+            : item,
+        ),
+      )
     } finally {
       setIsLoading(false)
       textarea.current?.focus()

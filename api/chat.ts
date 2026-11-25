@@ -49,6 +49,13 @@ export default async function handler(req: VercelRequest, res: VercelResponse): 
     content: message.content.trim(),
   }))
 
+  const abortController = new AbortController()
+  res.on('close', () => {
+    if (!res.writableEnded) {
+      abortController.abort()
+    }
+  })
+
   try {
     const openai = new OpenAI({ apiKey })
     const request = {
@@ -57,14 +64,49 @@ export default async function handler(req: VercelRequest, res: VercelResponse): 
       instructions: SYSTEM_PROMPT,
       input: messages,
       max_output_tokens: 700,
+      stream: true,
     }
     // The SDK's current ReasoningEffort union has not added the model's `none` value yet.
-    const response = await openai.responses.create(
-      request as unknown as OpenAI.Responses.ResponseCreateParamsNonStreaming,
+    const stream = await openai.responses.create(
+      request as unknown as OpenAI.Responses.ResponseCreateParamsStreaming,
+      { signal: abortController.signal },
     )
-    res.status(200).json({ reply: response.output_text })
+
+    res.statusCode = 200
+    res.setHeader('Content-Type', 'text/event-stream; charset=utf-8')
+    res.setHeader('Cache-Control', 'no-cache, no-transform')
+    res.setHeader('Connection', 'keep-alive')
+    res.setHeader('X-Accel-Buffering', 'no')
+    res.flushHeaders?.()
+
+    for await (const event of stream) {
+      if (abortController.signal.aborted || res.writableEnded) break
+
+      if (event.type === 'response.output_text.delta' && event.delta) {
+        res.write(`data: ${JSON.stringify({ delta: event.delta })}\n\n`)
+      } else if (event.type === 'error' || event.type === 'response.failed') {
+        throw new Error(event.type === 'error' ? event.message : 'OpenAI response failed')
+      }
+    }
+
+    if (!res.writableEnded) {
+      res.write('data: [DONE]\n\n')
+      res.end()
+    }
   } catch (error) {
+    if (abortController.signal.aborted) {
+      if (!res.writableEnded) res.end()
+      return
+    }
     console.error('OpenAI Responses API request failed:', error)
-    res.status(502).json({ error: '답변을 불러오지 못했어요. 잠시 후 다시 시도해 주세요.' })
+    const errorMessage = '답변을 불러오지 못했어요. 잠시 후 다시 시도해 주세요.'
+    if (!res.headersSent) {
+      res.status(502).json({ error: errorMessage })
+      return
+    }
+    if (!res.writableEnded) {
+      res.write(`data: ${JSON.stringify({ error: errorMessage })}\n\n`)
+      res.end()
+    }
   }
 }
