@@ -8,13 +8,18 @@ interface DisplayMessage extends ChatMessage {
   pending?: boolean
 }
 
-const suggestions = ['여행 영어 · 초급', '음식 · 중급', '비즈니스 · 초급']
+const TOPICS = ['일상 회화', '비즈니스 영어', '공항/여행 영어', '토익/수능 필수 단어'] as const
+const DIFFICULTIES = ['초급', '중급', '고급'] as const
+
+type Topic = (typeof TOPICS)[number]
+type Difficulty = (typeof DIFFICULTIES)[number]
 
 export default function Chatbot() {
   const [messages, setMessages] = useState<DisplayMessage[]>([
     { id: 1, role: 'assistant', content: '안녕하세요! 어떤 주제와 난이도의 영어 단어를 배워 볼까요?\n예: 여행 영어 초급, 음식 관련 중급', },
   ])
   const [input, setInput] = useState('')
+  const [selectedTopic, setSelectedTopic] = useState<Topic | null>(null)
   const [isLoading, setIsLoading] = useState(false)
   const nextId = useRef(2)
   const messagesEnd = useRef<HTMLDivElement>(null)
@@ -66,6 +71,13 @@ export default function Chatbot() {
     }
   }
 
+  function handleDifficultySelect(difficulty: Difficulty) {
+    if (!selectedTopic || isLoading) return
+    const prompt = `주제: ${selectedTopic}\n난이도: ${difficulty}\n위 조건에 맞는 영어 단어 퀴즈를 시작해줘.`
+    setSelectedTopic(null)
+    void submit(prompt)
+  }
+
   function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
     void submit()
@@ -114,7 +126,38 @@ export default function Chatbot() {
             <div ref={messagesEnd} />
           </div>
           <form className="composer" onSubmit={handleSubmit}>
-            <div className="suggestions">{suggestions.map((suggestion) => <button className="suggestion" key={suggestion} type="button" disabled={isLoading} onClick={() => void submit(suggestion)}>{suggestion}</button>)}</div>
+            <div className="suggestions" aria-label={selectedTopic ? '난이도 선택' : '주제 선택'}>
+              {selectedTopic === null ? (
+                TOPICS.map((topic) => (
+                  <button className="suggestion" key={topic} type="button" disabled={isLoading} onClick={() => setSelectedTopic(topic)}>
+                    {topic}
+                  </button>
+                ))
+              ) : (
+                <>
+                  <button
+                    className="suggestion suggestion-selected"
+                    type="button"
+                    disabled={isLoading}
+                    onClick={() => setSelectedTopic(null)}
+                    aria-label={`선택된 주제 ${selectedTopic} 변경하기`}
+                  >
+                    ← {selectedTopic}
+                  </button>
+                  {DIFFICULTIES.map((difficulty) => (
+                    <button
+                      className="suggestion"
+                      key={difficulty}
+                      type="button"
+                      disabled={isLoading}
+                      onClick={() => handleDifficultySelect(difficulty)}
+                    >
+                      {difficulty}
+                    </button>
+                  ))}
+                </>
+              )}
+            </div>
             <div className="input-row">
               <textarea ref={textarea} value={input} onChange={(event) => { setInput(event.target.value); resizeInput(event.target) }} onKeyDown={handleKeyDown} placeholder="주제와 난이도를 입력해 주세요" rows={1} aria-label="메시지 입력" />
               <button className="send" type="submit" disabled={isLoading || !input.trim()} aria-label="메시지 보내기">↑</button>
